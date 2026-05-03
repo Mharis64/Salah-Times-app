@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin(masjidId) {
+      return isSignedIn() &&
+        request.auth.uid ==
+          get(/databases/$(database)/documents/masajid/$(masjidId)).data.adminUid;
+    }
+
+    function isValidTime(val) {
+      return val is string &&
+        val.matches('^(0[1-9]|1[0-2]):[0-5][0-9] (AM|PM)$');
+    }
+
+    function validTimes(data) {
+      return isValidTime(data.jamatTimes.Fajr)
+          && isValidTime(data.jamatTimes.Dhuhr)
+          && isValidTime(data.jamatTimes.Asr)
+          && isValidTime(data.jamatTimes.Maghrib)
+          && isValidTime(data.jamatTimes.Isha);
+    }
+
+    // ── /masajid/{id} ───────────────────────────────────────────────────────
+    match /masajid/{masjidId} {
+      allow read:   if true;                         // anyone can read
+      allow update: if isAdmin(masjidId) && validTimes(request.resource.data);
+      allow create: if isSignedIn();                 // tighten with custom claims in prod
+      allow delete: if false;
+    }
+
+    // ── /users/{uid} ────────────────────────────────────────────────────────
+    match /users/{uid} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
+    }
+  }
+}
